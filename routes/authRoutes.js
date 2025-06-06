@@ -171,7 +171,7 @@ router.post('/forgot-password', async (req, res) => {
     user.resetTokenExpires = Date.now() + 15 * 60 * 1000;
     await user.save();
 
-    const resetUrl = `http://localhost:3000/reset-password?token=${token}`;
+    const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
     await transporter.sendMail({
       from: `"Giggle Password Manager" <${process.env.EMAIL_USER}>`,
       to: email,
@@ -199,18 +199,29 @@ router.post('/verify-reset-token', async (req, res) => {
     if (!user) {
       return res.status(400).json({ message: 'Invalid or expired link.' });
     }
+     res.json({ message: 'Token is valid.' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Something went wrong.' });
+  }
+});
 
+router.post('/reset-password', async (req, res) => {
+  const { token, newPassword } = req.body;
+  try {
+    const user = await User.findOne({
+      resetToken: token,
+      resetTokenExpires: { $gt: Date.now() }
+    });
+    if (!user) {
+      return res.status(400).json({ message: 'Invalid or expired token.' });
+    }
+    const salt = await bcrypt.genSalt(10);
+    user.passwordHash = await bcrypt.hash(newPassword, salt);
     user.resetToken = null;
     user.resetTokenExpires = null;
     await user.save();
-
-    const jwtToken = jwt.sign(
-      { userId: user._id, email: user.email, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: '1h' }
-    );
-
-    res.json({ token: jwtToken });
+    res.json({ message: 'Password updated! You can now log in.' });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Something went wrong.' });
